@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: default
+spec:
+  # VULNERABILITY FIX: sin replicas fijas cuando hay HPA (INFO - HPA Targeted Deployments)
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      # VULNERABILITY FIX: deshabilitar automount de service account token (MEDIUM)
+      automountServiceAccountToken: false
+      # STARTUP FIX: esperar a que MySQL acepte conexiones TCP antes de arrancar el backend
+      initContainers:
+      - name: wait-for-mysql
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          echo "Esperando a que MySQL esté listo en db:3306..."
+          until nc -z db 3306; do
+            echo "  MySQL no disponible todavía, reintentando en 3s..."
+            sleep 3
+          done
+          echo "MySQL está aceptando conexiones."
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        resources:
+          requests:
+            memory: "16Mi"
+            cpu: "5m"
+          limits:
+            memory: "32Mi"
+            cpu: "10m"
+      containers:
+      - name: backend
+        image: localhost:5001/todo-backend:1.0
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+        env:
+        - name: DB_HOST
+          value: "db"
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: user
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        - name: DB_NAME
+          value: "tododb"
+        - name: PORT
+          value: "3000"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "10m"
+          limits:
+            memory: "128Mi"
+            cpu: "50m"
+        # VULNERABILITY FIX: securityContext (HIGH - Privilege Escalation Allowed)
+        # VULNERABILITY FIX: runAsNonRoot (MEDIUM - Container Running As Root)
+        # VULNERABILITY FIX: readOnlyRootFilesystem (LOW - Root Container Not Mounted Read-only)
+        # VULNERABILITY FIX: drop capabilities (MEDIUM - NET_RAW/No Drop Capabilities)
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        # STARTUP FIX: startupProbe protege al contenedor durante el arranque.
+        # Mientras no pase, liveness y readiness NO se ejecutan.
+        # Da hasta 5 + (30 × 5) = 155s para que la app arranque completamente.
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          failureThreshold: 30
+        # VULNERABILITY FIX: readinessProbe (MEDIUM - Readiness Probe Not Configured)
+        # Solo se activa DESPUÉS de que startupProbe haya pasado.
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          periodSeconds: 5
+          failureThreshold: 3
+        # VULNERABILITY FIX: livenessProbe (INFO - Liveness Probe Not Defined)
+        # Solo se activa DESPUÉS de que startupProbe haya pasado.
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          periodSeconds: 10
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: backend
+  ports:
+  - port: 3000
+    targetPort: 3000
+    nodePort: 30000

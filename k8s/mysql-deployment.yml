@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      # VULNERABILITY FIX: deshabilitar automount de service account token (MEDIUM)
+      automountServiceAccountToken: false
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: root-password
+        - name: MYSQL_DATABASE
+          value: "tododb"
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+        - name: mysql-init
+          mountPath: /docker-entrypoint-initdb.d
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        # VULNERABILITY FIX: securityContext (HIGH - Privilege Escalation Allowed)
+        # VULNERABILITY FIX: runAsNonRoot (MEDIUM - Container Running As Root)
+        # VULNERABILITY FIX: drop capabilities (MEDIUM - NET_RAW/No Drop Capabilities)
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 999
+          capabilities:
+            drop:
+              - ALL
+        # STARTUP FIX: startupProbe da hasta 10 + (30 × 10) = 310s para que MySQL inicialice.
+        # Mientras no pase, liveness y readiness NO se ejecutan.
+        startupProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 30
+        # VULNERABILITY FIX: readinessProbe (MEDIUM - Readiness Probe Not Configured)
+        # Solo se activa DESPUÉS de que startupProbe haya pasado.
+        readinessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          periodSeconds: 10
+          failureThreshold: 3
+        # VULNERABILITY FIX: livenessProbe (INFO - Liveness Probe Not Defined)
+        # Solo se activa DESPUÉS de que startupProbe haya pasado.
+        livenessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          periodSeconds: 15
+          failureThreshold: 3
+      volumes:
+      - name: mysql-data
+        emptyDir: {}
+      - name: mysql-init
+        configMap:
+          name: mysql-init-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  namespace: default
+spec:
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+    targetPort: 3306

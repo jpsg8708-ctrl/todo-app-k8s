@@ -1,0 +1,65 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: todo-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d
+    # VULNERABILITY FIX: puerto de MySQL no expuesto (MEDIUM - Container Traffic Not Bound To Host Interface)
+    # No se expone el puerto 3306 al host; solo el backend se conecta por red interna
+    # VULNERABILITY FIX: límites de memoria y CPU (MEDIUM - Memory/CPU Not Limited)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    # VULNERABILITY FIX: opciones de seguridad (MEDIUM - Security Opt Not Set)
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "todouser", "-ptodopassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: todo-backend
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      DB_NAME: ${MYSQL_DATABASE}
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    # VULNERABILITY FIX: límites de memoria y CPU (MEDIUM - Memory/CPU Not Limited)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 128M
+    # VULNERABILITY FIX: opciones de seguridad (MEDIUM - Security Opt Not Set)
+    security_opt:
+      - no-new-privileges:true
+    # VULNERABILITY FIX: healthcheck (MEDIUM - Healthcheck Not Set)
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mysql_data:

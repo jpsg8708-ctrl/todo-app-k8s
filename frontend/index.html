@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gestor de Tareas</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    header {
+      background: #2563eb;
+      color: white;
+      padding: 1.5rem 2rem;
+      border-radius: 12px;
+      margin-bottom: 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    header h1 { font-size: 1.8rem; }
+    header p { opacity: 0.85; font-size: 0.95rem; }
+
+    .container { max-width: 800px; margin: 0 auto; }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      margin-bottom: 1.5rem;
+    }
+
+    .card h2 { margin-bottom: 1rem; color: #1e3a5f; font-size: 1.1rem; }
+
+    .form-group { margin-bottom: 1rem; }
+    label { display: block; margin-bottom: 0.4rem; font-weight: 600; color: #374151; font-size: 0.9rem; }
+
+    input[type="text"], textarea {
+      width: 100%;
+      padding: 0.6rem 0.9rem;
+      border: 1.5px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      transition: border-color 0.2s;
+      font-family: inherit;
+    }
+
+    input[type="text"]:focus, textarea:focus {
+      outline: none;
+      border-color: #2563eb;
+    }
+
+    textarea { resize: vertical; min-height: 70px; }
+
+    .btn {
+      padding: 0.6rem 1.4rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-success { background: #16a34a; color: white; }
+    .btn-success:hover { background: #15803d; }
+    .btn-danger { background: #dc2626; color: white; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-secondary { background: #6b7280; color: white; }
+    .btn-secondary:hover { background: #4b5563; }
+
+    .task-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+    .task-item {
+      border: 1.5px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 1rem 1.2rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .task-item:hover { border-color: #93c5fd; box-shadow: 0 2px 6px rgba(37,99,235,0.1); }
+    .task-item.completed { opacity: 0.6; background: #f9fafb; }
+
+    .task-checkbox {
+      width: 20px; height: 20px;
+      margin-top: 2px;
+      cursor: pointer;
+      accent-color: #2563eb;
+      flex-shrink: 0;
+    }
+
+    .task-content { flex: 1; min-width: 0; }
+    .task-title { font-weight: 600; color: #111827; margin-bottom: 0.2rem; }
+    .task-item.completed .task-title { text-decoration: line-through; color: #6b7280; }
+    .task-desc { font-size: 0.85rem; color: #6b7280; }
+    .task-date { font-size: 0.75rem; color: #9ca3af; margin-top: 0.3rem; }
+
+    .task-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.active { display: flex; }
+
+    .modal {
+      background: white;
+      border-radius: 12px;
+      padding: 2rem;
+      width: 90%;
+      max-width: 500px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+
+    .modal h2 { margin-bottom: 1.5rem; color: #1e3a5f; }
+    .modal-actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem; }
+
+    .empty-state {
+      text-align: center;
+      padding: 2.5rem;
+      color: #9ca3af;
+    }
+
+    .empty-state .icon { font-size: 3rem; margin-bottom: 0.5rem; }
+
+    #toast {
+      position: fixed;
+      bottom: 2rem; right: 2rem;
+      background: #1f2937;
+      color: white;
+      padding: 0.75rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.3s;
+      z-index: 9999;
+    }
+
+    #toast.show { opacity: 1; transform: translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>📋 Gestor de Tareas</h1>
+        <p>Aplicación CRUD · Docker + MySQL</p>
+      </div>
+    </header>
+
+    <!-- Formulario crear tarea -->
+    <div class="card">
+      <h2>➕ Nueva Tarea</h2>
+      <div class="form-group">
+        <label for="newTitle">Título *</label>
+        <input type="text" id="newTitle" placeholder="¿Qué hay que hacer?" />
+      </div>
+      <div class="form-group">
+        <label for="newDesc">Descripción</label>
+        <textarea id="newDesc" placeholder="Detalles opcionales..."></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="createTask()">Crear tarea</button>
+    </div>
+
+    <!-- Lista de tareas -->
+    <div class="card">
+      <h2>📝 Tareas</h2>
+      <div class="task-list" id="taskList">
+        <div class="empty-state"><div class="icon">⏳</div><p>Cargando tareas...</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal editar -->
+  <div class="modal-overlay" id="editModal">
+    <div class="modal">
+      <h2>✏️ Editar Tarea</h2>
+      <input type="hidden" id="editId" />
+      <div class="form-group">
+        <label for="editTitle">Título *</label>
+        <input type="text" id="editTitle" />
+      </div>
+      <div class="form-group">
+        <label for="editDesc">Descripción</label>
+        <textarea id="editDesc"></textarea>
+      </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="editCompleted" style="margin-right:0.5rem;" />
+          Completada
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+        <button class="btn btn-success" onclick="updateTask()">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    const API = '/api/tasks';
+
+    async function fetchTasks() {
+      try {
+        const res = await fetch(API);
+        const tasks = await res.json();
+        renderTasks(tasks);
+      } catch (e) {
+        showToast('Error al conectar con el servidor', true);
+      }
+    }
+
+    function renderTasks(tasks) {
+      const list = document.getElementById('taskList');
+      if (!tasks.length) {
+        list.innerHTML = '<div class="empty-state"><div class="icon">🎉</div><p>No hay tareas. ¡Crea una!</p></div>';
+        return;
+      }
+      list.innerHTML = tasks.map(t => `
+        <div class="task-item ${t.completed ? 'completed' : ''}" id="task-${t.id}">
+          <input class="task-checkbox" type="checkbox" ${t.completed ? 'checked' : ''}
+            onchange="toggleTask(${t.id}, ${!t.completed}, '${escape(t.title)}', '${escape(t.description || '')}')" />
+          <div class="task-content">
+            <div class="task-title">${escapeHtml(t.title)}</div>
+            ${t.description ? `<div class="task-desc">${escapeHtml(t.description)}</div>` : ''}
+            <div class="task-date">📅 ${new Date(t.created_at).toLocaleString('es-ES')}</div>
+          </div>
+          <div class="task-actions">
+            <button class="btn btn-primary" onclick="openEdit(${t.id}, '${escape(t.title)}', '${escape(t.description || '')}', ${t.completed})">✏️</button>
+            <button class="btn btn-danger" onclick="deleteTask(${t.id})">🗑️</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function createTask() {
+      const title = document.getElementById('newTitle').value.trim();
+      const description = document.getElementById('newDesc').value.trim();
+      if (!title) { showToast('El título es obligatorio'); return; }
+      await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description })
+      });
+      document.getElementById('newTitle').value = '';
+      document.getElementById('newDesc').value = '';
+      showToast('Tarea creada ✅');
+      fetchTasks();
+    }
+
+    async function deleteTask(id) {
+      if (!confirm('¿Eliminar esta tarea?')) return;
+      await fetch(`${API}/${id}`, { method: 'DELETE' });
+      showToast('Tarea eliminada 🗑️');
+      fetchTasks();
+    }
+
+    async function toggleTask(id, completed, title, description) {
+      await fetch(`${API}/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: unescape(title), description: unescape(description), completed })
+      });
+      fetchTasks();
+    }
+
+    function openEdit(id, title, description, completed) {
+      document.getElementById('editId').value = id;
+      document.getElementById('editTitle').value = unescape(title);
+      document.getElementById('editDesc').value = unescape(description);
+      document.getElementById('editCompleted').checked = completed;
+      document.getElementById('editModal').classList.add('active');
+    }
+
+    function closeModal() {
+      document.getElementById('editModal').classList.remove('active');
+    }
+
+    async function updateTask() {
+      const id = document.getElementById('editId').value;
+      const title = document.getElementById('editTitle').value.trim();
+      const description = document.getElementById('editDesc').value.trim();
+      const completed = document.getElementById('editCompleted').checked;
+      if (!title) { showToast('El título es obligatorio'); return; }
+      await fetch(`${API}/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description, completed })
+      });
+      closeModal();
+      showToast('Tarea actualizada ✅');
+      fetchTasks();
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Cerrar modal al hacer click fuera
+    document.getElementById('editModal').addEventListener('click', function(e) {
+      if (e.target === this) closeModal();
+    });
+
+    // Cargar tareas al iniciar
+    fetchTasks();
+  </script>
+</body>
+</html>
